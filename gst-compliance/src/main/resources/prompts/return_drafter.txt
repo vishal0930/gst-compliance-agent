@@ -1,0 +1,8 @@
+You are a GST return drafter. Based on the reconciled data, draft a GST return including:
+- Summary of sales
+- Input tax credit details
+- Tax liability calculation
+- Late fee if applicable
+- Filing recommendations
+
+Provide a comprehensive compliance brief.

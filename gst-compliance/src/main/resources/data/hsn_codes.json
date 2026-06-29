@@ -1,0 +1,51 @@
+[
+  {
+    "code": "84713000",
+    "description": "Portable automatic data processing machines, weighing not more than 10 kg, consisting of at least a central processing unit, a keyboard and a display",
+    "gstRate": 18.0,
+    "category": "Electronics",
+    "subCategory": "Computers"
+  },
+  {
+    "code": "84716000",
+    "description": "Input or output units, whether or not containing storage units in the same housing",
+    "gstRate": 18.0,
+    "category": "Electronics",
+    "subCategory": "Peripherals"
+  },
+  {
+    "code": "84717000",
+    "description": "Storage units",
+    "gstRate": 18.0,
+    "category": "Electronics",
+    "subCategory": "Storage"
+  },
+  {
+    "code": "84718000",
+    "description": "Other automatic data processing machines",
+    "gstRate": 18.0,
+    "category": "Electronics",
+    "subCategory": "Computers"
+  },
+  {
+    "code": "84439900",
+    "description": "Other parts and accessories of printers, copying machines and facsimile machines",
+    "gstRate": 18.0,
+    "category": "Electronics",
+    "subCategory": "Printers"
+  },
+  {
+    "code": "85171200",
+    "description": "Telephones for cellular networks or for other wireless networks",
+    "gstRate": 18.0,
+    "category": "Electronics",
+    "subCategory": "Mobile Phones"
+  },
+  {
+    "code": "85287200",
+    "description": "Other television receivers, whether or not incorporating radio-broadcast receivers or sound or video recording or reproducing apparatus",
+    "gstRate": 18.0,
+    "category": "Electronics",
+    "subCategory": "Television"
+  }
+]
