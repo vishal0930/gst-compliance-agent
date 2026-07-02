@@ -18,6 +18,8 @@ public class Gstr2bUploadResponse {
     private int totalProcessed;
     private int successfulCount;
     private int failedCount;
+    private String taxPeriod;
+    private java.math.BigDecimal totalItc;
     private List<InvoiceResult> results;
     private LocalDateTime timestamp;
 

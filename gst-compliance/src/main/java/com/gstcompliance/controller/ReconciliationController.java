@@ -7,7 +7,6 @@ import com.gstcompliance.dto.response.ApiResponse;
 import com.gstcompliance.dto.response.ReconciliationResponse;
 import com.gstcompliance.model.ReconciliationRecord;
 import com.gstcompliance.service.InvoiceService;
-import com.gstcompliance.service.GstrPortalService;
 import com.gstcompliance.util.ExcelExporter;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -65,29 +64,16 @@ public class ReconciliationController {
                     .body(ApiResponse.error("Reconciliation failed: " + e.getMessage(), "RECONCILIATION_ERROR"));
         }
     }
-    @PostMapping("/reconcile")
-    public ResponseEntity<ApiResponse<ReconciliationResponse>> reconcile(
-            @Valid @RequestBody ReconcileRequest request,
-            Authentication authentication) {
-
-        return runReconciliation(request, authentication);
-    }
-
     @GetMapping
     public ResponseEntity<ApiResponse<Page<ReconciliationRecord>>> getReconciliations(
+            @RequestParam(required = false) Integer month,
+            @RequestParam(required = false) Integer year,
             Authentication authentication,
             Pageable pageable) {
 
         String email = authentication.getName();
-        Page<ReconciliationRecord> records = invoiceService.getReconciliationRecords(email, pageable);
+        Page<ReconciliationRecord> records = invoiceService.getReconciliationRecords(email, month, year, pageable);
         return ResponseEntity.ok(ApiResponse.success("Reconciliations retrieved", records));
-    }
-    @GetMapping("/history")
-    public ResponseEntity<ApiResponse<Page<ReconciliationRecord>>> getHistory(
-            Authentication authentication,
-            Pageable pageable) {
-
-        return getReconciliations(authentication, pageable);
     }
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<ReconciliationResponse>> getReconciliation(

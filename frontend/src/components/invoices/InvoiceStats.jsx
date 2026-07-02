@@ -50,21 +50,21 @@ const InvoiceStats = ({ stats }) => {
         return (
           <div
             key={card.key}
-            className="rounded-2xl border border-slate-800 bg-slate-900 p-5 transition hover:border-amber-500/40"
+            className="rounded-2xl border border-[var(--border)] bg-card p-5 shadow-sm transition hover:border-[var(--accent)] hover:shadow-md"
           >
             <div className="flex items-center justify-between">
 
               <div>
-                <p className="text-sm text-slate-400">
+                <p className="text-sm font-medium text-[var(--text-muted)]">
                   {card.title}
                 </p>
 
-                <h2 className="mt-3 text-3xl font-bold text-white">
+                <h2 className="mt-3 text-3xl font-bold text-[var(--text-primary)]">
                   {stats?.[card.key] ?? 0}
                 </h2>
               </div>
 
-              <div className="rounded-xl bg-slate-950 p-3">
+              <div className="rounded-xl bg-[var(--bg-input)] p-3">
                 <Icon className={`h-6 w-6 ${card.color}`} />
               </div>
 

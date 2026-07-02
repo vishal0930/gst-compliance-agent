@@ -24,7 +24,7 @@ const Spinner = ({
       indicator={<LoadingOutlined style={{ fontSize: size === 'large' ? 32 : 24 }} spin />}
       spinning={spinning}
       className={cn(
-        fullScreen && 'fixed inset-0 flex items-center justify-center bg-white/80 z-50',
+        fullScreen && 'fixed inset-0 flex items-center justify-center bg-[var(--bg-canvas)]/80 z-50',
         className
       )}
     >
@@ -34,7 +34,7 @@ const Spinner = ({
 
   if (fullScreen) {
     return (
-      <div className="fixed inset-0 flex items-center justify-center bg-white/80 z-50">
+      <div className="fixed inset-0 flex items-center justify-center bg-[var(--bg-canvas)]/80 z-50">
         <Spin size={sizeMap[size] || 'default'} tip={tip} />
       </div>
     );

@@ -22,14 +22,14 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
-      <Card className="w-full max-w-md bg-slate-900 border-slate-800 shadow-2xl">
+    <div className="min-h-screen bg-canvas flex items-center justify-center p-4 transition-colors duration-300">
+      <Card className="w-full max-w-md bg-card border-theme shadow-2xl p-4">
         <div className="text-center mb-8">
-          <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-amber-500 to-amber-600 flex items-center justify-center mx-auto mb-4 shadow-lg">
-            <span className="text-slate-950 font-extrabold text-lg">GST</span>
+          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[var(--accent)] to-[var(--pink)] flex items-center justify-center mx-auto mb-4 shadow-lg shadow-[rgba(139,92,246,0.3)]">
+            <span className="text-white font-extrabold text-lg">GST</span>
           </div>
-          <h1 className="text-2xl font-bold text-white mb-2">GST Compliance Platform</h1>
-          <p className="text-slate-400">Sign in to your account</p>
+          <h1 className="text-2xl font-bold text-[var(--text-primary)] mb-2">GST Compliance Platform</h1>
+          <p className="text-[var(--text-muted)]">Sign in to your account</p>
         </div>
 
         <Form name="login" onFinish={onFinish} layout="vertical">
@@ -41,10 +41,9 @@ const Login = () => {
             ]}
           >
             <Input
-              prefix={<UserOutlined className="text-slate-400" />}
+              prefix={<UserOutlined className="text-[var(--text-muted)]" />}
               placeholder="Email Address"
               size="large"
-              className="bg-slate-800 border-slate-700 text-white"
             />
           </Form.Item>
 
@@ -53,21 +52,20 @@ const Login = () => {
             rules={[{ required: true, message: 'Please enter your password' }]}
           >
             <Input.Password
-              prefix={<LockOutlined className="text-slate-400" />}
+              prefix={<LockOutlined className="text-[var(--text-muted)]" />}
               placeholder="Password"
               size="large"
-              className="bg-slate-800 border-slate-700 text-white"
             />
           </Form.Item>
 
-          <Form.Item>
+          <Form.Item className="mt-6">
             <Button
               type="primary"
               htmlType="submit"
               loading={loading}
               block
               size="large"
-              className="bg-amber-500 text-slate-950 border-amber-500 hover:bg-amber-400 font-semibold h-12"
+              className="font-semibold h-12 shadow-md shadow-[rgba(139,92,246,0.2)]"
             >
               Sign In
             </Button>

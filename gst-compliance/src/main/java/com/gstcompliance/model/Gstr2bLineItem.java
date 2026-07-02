@@ -51,7 +51,22 @@ public class Gstr2bLineItem {
     @Column(name = "igst_amount", precision = 15, scale = 2)
     private BigDecimal igstAmount;
 
+    // ── Future-proof fields ──────────────────────────────────────────────
+    @Column(name = "cess", precision = 15, scale = 2)
+    @Builder.Default
+    private BigDecimal cess = BigDecimal.ZERO;
+
+    /** Whether this line item's GST is eligible for ITC credit */
+    @Column(name = "itc_eligible", nullable = false)
+    @Builder.Default
+    private Boolean itcEligible = true;
+
+    /** Section 9(3) / 9(4) reverse charge flag */
+    @Column(name = "reverse_charge", nullable = false)
+    @Builder.Default
+    private Boolean reverseCharge = false;
+
     @CreationTimestamp
-    @Column(name = "created_at")
+    @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 }

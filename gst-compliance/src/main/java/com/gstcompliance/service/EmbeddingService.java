@@ -8,7 +8,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Slf4j
 @Service
@@ -23,21 +25,20 @@ public class EmbeddingService {
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
 
-    public EmbeddingService() {
-        this.restTemplate = new RestTemplate();
-        this.objectMapper = new ObjectMapper();
+    public EmbeddingService(RestTemplate restTemplate, ObjectMapper objectMapper) {
+        this.restTemplate = restTemplate;
+        this.objectMapper = objectMapper;
     }
 
     public float[] generateEmbedding(String text) {
         try {
             log.info("🧠 Generating embedding for: {}", text.substring(0, Math.min(50, text.length())));
 
-            String requestBody = String.format(
-                    "{\"model\": \"%s\", \"prompt\": \"%s\"}",
-                    embeddingModel,
-                    text.replace("\"", "\\\"")
-            );
+            Map<String, Object> request = new HashMap<>();
+            request.put("model", embeddingModel);
+            request.put("prompt", text);
 
+            String requestBody = objectMapper.writeValueAsString(request);
             String response = restTemplate.postForObject(
                     embeddingUrl,
                     requestBody,
@@ -46,13 +47,13 @@ public class EmbeddingService {
 
             if (response == null) {
                 log.error("❌ No response from Ollama embedding API");
-                return new float[768];
+                return new float[0];
             }
 
             JsonNode root = objectMapper.readTree(response);
             JsonNode embeddingNode = root.path("embedding");
 
-            if (embeddingNode.isArray()) {
+            if (embeddingNode.isArray() && embeddingNode.size() > 0) {
                 float[] embedding = new float[embeddingNode.size()];
                 for (int i = 0; i < embeddingNode.size(); i++) {
                     embedding[i] = (float) embeddingNode.get(i).asDouble();
@@ -61,11 +62,13 @@ public class EmbeddingService {
                 return embedding;
             }
 
-            return new float[1536];
+            log.error("❌ Embedding array missing or empty in Ollama response");
+            return new float[0];
 
         } catch (Exception e) {
             log.error("❌ Failed to generate embedding: {}", e.getMessage(), e);
-            return new float[768];
+            // Return empty array — caller (HsnLookupService) will fall back to text search
+            return new float[0];
         }
     }
 

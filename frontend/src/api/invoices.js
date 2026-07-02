@@ -41,4 +41,12 @@ export const invoiceApi = {
   getJobStatus: async (jobId) => {
     return client.get(`/invoices/jobs/${jobId}`);
   },
+
+  /**
+   * 6. Update/Review Invoice
+   * PUT /api/v1/invoices/{id}
+   */
+  updateInvoice: async (id, data) => {
+    return client.put(`/invoices/${id}`, data);
+  },
 };

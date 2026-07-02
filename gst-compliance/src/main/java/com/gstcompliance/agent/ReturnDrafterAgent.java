@@ -41,7 +41,27 @@ public class ReturnDrafterAgent extends BaseAgent<PipelineState, ComplianceBrief
         ReconciliationData reconciliationData = extractReconciliationData(state);
         FinancialSummary financials = calculateFinancials(state, reconciliationData);
         String brief = generateComplianceBrief(state, reconciliationData, financials);
-        List<String> actionItems = generateActionItems(reconciliationData);
+        List<String> actionStrings = generateActionItems(reconciliationData);
+
+        // Convert the generated action strings into ActionItemDTO objects
+        List<ComplianceBriefResponse.ActionItemDTO> actionItems = actionStrings.stream()
+                .map(text -> ComplianceBriefResponse.ActionItemDTO.builder()
+                        .title(text)
+                        .description(text)
+                        .priority(text.startsWith("🚨") ? "HIGH" :
+                                  text.startsWith("⚠️") ? "MEDIUM" : "INFO")
+                        .isCompleted(false)
+                        .build())
+                .collect(java.util.stream.Collectors.toList());
+
+        if (actionItems.isEmpty()) {
+            actionItems = List.of(ComplianceBriefResponse.ActionItemDTO.builder()
+                    .title("✅ All invoices matched")
+                    .description("No action required for this period.")
+                    .priority("INFO")
+                    .isCompleted(false)
+                    .build());
+        }
 
         return ComplianceBriefResponse.builder()
                 .userId(state.getUserId().toString())
@@ -52,85 +72,28 @@ public class ReturnDrafterAgent extends BaseAgent<PipelineState, ComplianceBrief
                 .totalItc(financials.getTotalItc())
                 .taxLiability(financials.getTaxLiability())
                 .itcAtRisk(reconciliationData.getItcAtRisk())
-                .actionItems(List.of(
-                        ComplianceBriefResponse.ActionItemDTO.builder()
-                                .title("Review mismatches")
-                                .description("Verify invoices with supplier.")
-                                .priority("HIGH")
-                                .isCompleted(false)
-                                .build()
-                ))
+                .actionItems(actionItems)
                 .isComplete(state.isAllAgentsSuccessful())
+                .isApproved(false)
                 .build();
     }
 
     private ReconciliationData extractReconciliationData(PipelineState state) {
         ReconciliationData data = new ReconciliationData();
-        Object reconResult = state.getReconciliationResult();
+        ReconciliationResponse reconResult = state.getReconciliationResult();
 
         if (reconResult == null) {
             log.warn("No reconciliation result found in state");
             return data;
         }
 
-        if (reconResult instanceof ReconciliationResponse) {
-            ReconciliationResponse response = (ReconciliationResponse) reconResult;
-            data.setTotalInvoices(response.getTotalInvoices());
-            data.setMatchedCount(response.getMatchedCount());
-            data.setMismatchCount(response.getMismatchCount());
-            data.setItcAtRisk(response.getItcAtRisk());
-            data.setMismatches(response.getMismatches());
-            data.setSummary(response.getSummary());
-            return data;
-        }
-
-        if (reconResult instanceof Map) {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> reconMap = (Map<String, Object>) reconResult;
-            data.setTotalInvoices(getIntValue(reconMap, "totalInvoices", 0));
-            data.setMatchedCount(getIntValue(reconMap, "matchedCount", 0));
-            data.setMismatchCount(getIntValue(reconMap, "mismatchCount", 0));
-            data.setItcAtRisk(getBigDecimalValue(reconMap, "itcAtRisk", BigDecimal.ZERO));
-
-            Object mismatchesObj = reconMap.get("mismatches");
-            if (mismatchesObj instanceof List) {
-                @SuppressWarnings("unchecked")
-                List<Map<String, Object>> mismatchMaps = (List<Map<String, Object>>) mismatchesObj;
-                data.setMismatches(convertMismatchMapsToDTO(mismatchMaps));
-            }
-
-            Object summaryObj = reconMap.get("summary");
-            if (summaryObj instanceof String) {
-                data.setSummary((String) summaryObj);
-            }
-        }
-
+        data.setTotalInvoices(reconResult.getTotalInvoices());
+        data.setMatchedCount(reconResult.getMatchedCount());
+        data.setMismatchCount(reconResult.getMismatchCount());
+        data.setItcAtRisk(reconResult.getItcAtRisk() != null ? reconResult.getItcAtRisk() : BigDecimal.ZERO);
+        data.setMismatches(reconResult.getMismatches() != null ? reconResult.getMismatches() : new ArrayList<>());
+        data.setSummary(reconResult.getSummary());
         return data;
-    }
-
-    private List<ReconciliationResponse.MismatchDTO> convertMismatchMapsToDTO(List<Map<String, Object>> mismatchMaps) {
-        List<ReconciliationResponse.MismatchDTO> mismatches = new ArrayList<>();
-        for (Map<String, Object> map : mismatchMaps) {
-            ReconciliationResponse.MismatchDTO.MismatchDTOBuilder builder =
-                    ReconciliationResponse.MismatchDTO.builder()
-                            .status(String.valueOf(map.get("status")))
-                            .invoiceNumber(String.valueOf(map.get("invoiceNumber")))
-                            .supplierGstin(String.valueOf(map.get("supplierGstin")))
-                            .description(String.valueOf(map.get("description")))
-                            .recommendation(String.valueOf(map.get("recommendation")));
-
-            if (map.get("bookAmount") != null) {
-                builder.bookAmount(getBigDecimalFromObject(map.get("bookAmount")));
-            }
-            if (map.get("portalAmount") != null) {
-                builder.portalAmount(getBigDecimalFromObject(map.get("portalAmount")));
-            }
-            if (map.get("riskAmount") != null) {
-                builder.riskAmount(getBigDecimalFromObject(map.get("riskAmount")));
-            }
-            mismatches.add(builder.build());
-        }
-        return mismatches;
     }
 
     private FinancialSummary calculateFinancials(
@@ -332,37 +295,11 @@ public class ReturnDrafterAgent extends BaseAgent<PipelineState, ComplianceBrief
     }
 
     // Helper methods
-    private int getIntValue(Map<String, Object> map, String key, int defaultValue) {
-        Object value = map.get(key);
-        if (value instanceof Integer) return (Integer) value;
-        if (value instanceof Long) return ((Long) value).intValue();
-        if (value instanceof Double) return ((Double) value).intValue();
-        return defaultValue;
-    }
-
-    private BigDecimal getBigDecimalValue(Map<String, Object> map, String key, BigDecimal defaultValue) {
-        Object value = map.get(key);
-        return value != null ? getBigDecimalFromObject(value) : defaultValue;
-    }
-
-    private BigDecimal getBigDecimalFromObject(Object value) {
-        if (value == null) return BigDecimal.ZERO;
-        if (value instanceof BigDecimal) return (BigDecimal) value;
-        if (value instanceof Double) return BigDecimal.valueOf((Double) value);
-        if (value instanceof Integer) return BigDecimal.valueOf((Integer) value);
-        if (value instanceof Long) return BigDecimal.valueOf((Long) value);
-        if (value instanceof String) {
-            try { return new BigDecimal((String) value); }
-            catch (NumberFormatException e) { return BigDecimal.ZERO; }
-        }
-        return BigDecimal.ZERO;
-    }
-
     private String formatCurrency(BigDecimal amount) {
         return amount != null ? String.format("%.2f", amount) : "0.00";
     }
 
-    // Inner classes
+    @lombok.Data
     private static class ReconciliationData {
         private int totalInvoices;
         private int matchedCount;
@@ -370,34 +307,13 @@ public class ReturnDrafterAgent extends BaseAgent<PipelineState, ComplianceBrief
         private BigDecimal itcAtRisk = BigDecimal.ZERO;
         private List<ReconciliationResponse.MismatchDTO> mismatches = new ArrayList<>();
         private String summary;
-
-        public int getTotalInvoices() { return totalInvoices; }
-        public void setTotalInvoices(int totalInvoices) { this.totalInvoices = totalInvoices; }
-        public int getMatchedCount() { return matchedCount; }
-        public void setMatchedCount(int matchedCount) { this.matchedCount = matchedCount; }
-        public int getMismatchCount() { return mismatchCount; }
-        public void setMismatchCount(int mismatchCount) { this.mismatchCount = mismatchCount; }
-        public BigDecimal getItcAtRisk() { return itcAtRisk; }
-        public void setItcAtRisk(BigDecimal itcAtRisk) { this.itcAtRisk = itcAtRisk; }
-        public List<ReconciliationResponse.MismatchDTO> getMismatches() { return mismatches; }
-        public void setMismatches(List<ReconciliationResponse.MismatchDTO> mismatches) { this.mismatches = mismatches; }
-        public String getSummary() { return summary; }
-        public void setSummary(String summary) { this.summary = summary; }
     }
 
+    @lombok.Data
     private static class FinancialSummary {
         private BigDecimal totalSales = BigDecimal.ZERO;
         private BigDecimal totalGst = BigDecimal.ZERO;
         private BigDecimal totalItc = BigDecimal.ZERO;
         private BigDecimal taxLiability = BigDecimal.ZERO;
-
-        public BigDecimal getTotalSales() { return totalSales; }
-        public void setTotalSales(BigDecimal totalSales) { this.totalSales = totalSales; }
-        public BigDecimal getTotalGst() { return totalGst; }
-        public void setTotalGst(BigDecimal totalGst) { this.totalGst = totalGst; }
-        public BigDecimal getTotalItc() { return totalItc; }
-        public void setTotalItc(BigDecimal totalItc) { this.totalItc = totalItc; }
-        public BigDecimal getTaxLiability() { return taxLiability; }
-        public void setTaxLiability(BigDecimal taxLiability) { this.taxLiability = taxLiability; }
     }
 }

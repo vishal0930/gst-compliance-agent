@@ -1,21 +1,18 @@
 package com.gstcompliance.service;
 
 import com.gstcompliance.dto.request.Gstr2bInvoiceDto;
+import com.gstcompliance.dto.request.Gstr2bLineItemDto;
 import com.gstcompliance.dto.request.Gstr2bUploadRequest;
 import com.gstcompliance.dto.response.Gstr2bUploadResponse;
-import com.gstcompliance.model.Gstr2bInvoice;
-import com.gstcompliance.model.Gstr2bLineItem;
-import com.gstcompliance.model.User;
-import com.gstcompliance.exception.DuplicateInvoiceException;
 import com.gstcompliance.exception.ResourceNotFoundException;
-import com.gstcompliance.repository.Gstr2bInvoiceRepository;
-import com.gstcompliance.repository.Gstr2bLineItemRepository;
-import com.gstcompliance.repository.UserRepository;
+import com.gstcompliance.model.*;
+import com.gstcompliance.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -26,116 +23,171 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class Gstr2bUploadService {
 
-    private final Gstr2bInvoiceRepository gstr2bInvoiceRepository;
-    private final Gstr2bLineItemRepository gstr2bLineItemRepository;
-    private final UserRepository userRepository;
+    private final Gstr2bInvoiceRepository     gstr2bInvoiceRepository;
+    private final Gstr2bLineItemRepository    gstr2bLineItemRepository;
+    private final Gstr2bImportSessionRepository importSessionRepository;
+    private final UserRepository              userRepository;
 
+    /**
+     * Imports an entire month's GSTR-2B statement.
+     *
+     * If the period already exists and {@code request.isReplace()} is false,
+     * throws {@link IllegalStateException} — the caller (controller) returns 409.
+     *
+     * If {@code request.isReplace()} is true, existing invoices for that period
+     * are deleted before the fresh import (atomic within the transaction).
+     */
     @Transactional
     public Gstr2bUploadResponse uploadGstr2bData(Gstr2bUploadRequest request, String email) {
-        log.info("Starting GSTR2B upload processing for user: {}", email);
+
+        String taxPeriod = request.getTaxPeriod();
+        log.info("GSTR-2B upload — user: {}, period: {}, invoices: {}, replace: {}",
+                email, taxPeriod, request.getInvoices().size(), request.isReplace());
 
         User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found with email: " + email));
+                .orElseThrow(() -> new ResourceNotFoundException("User not found: " + email));
 
+        // ── Duplicate period guard ─────────────────────────────────────
+        boolean periodExists = gstr2bInvoiceRepository
+                .existsByUserIdAndTaxPeriod(user.getId(), taxPeriod);
+
+        if (periodExists && !request.isReplace()) {
+            throw new IllegalStateException(
+                    "GSTR-2B for period " + taxPeriod + " already exists. " +
+                    "Set replace=true to overwrite.");
+        }
+
+        if (periodExists) {
+            log.info("Replacing existing GSTR-2B data for period: {}", taxPeriod);
+            gstr2bInvoiceRepository.deleteByUserIdAndTaxPeriod(user.getId(), taxPeriod);
+        }
+
+        // ── Process each invoice ───────────────────────────────────────
         List<Gstr2bUploadResponse.InvoiceResult> results = new ArrayList<>();
-        int successfulCount = 0;
-        int failedCount = 0;
+        int successCount = 0;
+        int failCount    = 0;
 
-        for (Gstr2bInvoiceDto invoiceDto : request.getInvoices()) {
+        // Running totals for the session record
+        BigDecimal totalTaxable = BigDecimal.ZERO;
+        BigDecimal totalCgst    = BigDecimal.ZERO;
+        BigDecimal totalSgst    = BigDecimal.ZERO;
+        BigDecimal totalIgst    = BigDecimal.ZERO;
+
+        for (Gstr2bInvoiceDto dto : request.getInvoices()) {
             try {
-                // Check for duplicate invoice *before* triggering any entity transaction state changes
-                boolean exists = gstr2bInvoiceRepository.existsByUserAndSupplierGstinAndInvoiceNumber(
-                        user,
-                        invoiceDto.getSupplierGstin(),
-                        invoiceDto.getInvoiceNumber());
+                Gstr2bInvoice saved = saveInvoice(dto, user, taxPeriod);
 
-                if (exists) {
-                    log.warn("Duplicate invoice identified: {} for supplier: {}",
-                            invoiceDto.getInvoiceNumber(), invoiceDto.getSupplierGstin());
-                    failedCount++;
-                    results.add(Gstr2bUploadResponse.InvoiceResult.builder()
-                            .invoiceNumber(invoiceDto.getInvoiceNumber())
-                            .success(false)
-                            .message("Invoice already exists: " + invoiceDto.getInvoiceNumber())
-                            .build());
-                    continue;
-                }
+                totalTaxable = totalTaxable.add(nvl(saved.getTaxableValue()));
+                totalCgst    = totalCgst.add(nvl(saved.getCgst()));
+                totalSgst    = totalSgst.add(nvl(saved.getSgst()));
+                totalIgst    = totalIgst.add(nvl(saved.getIgst()));
 
-                // Delegate to save operation for the verified clean records
-                Gstr2bUploadResponse.InvoiceResult result = saveInvoiceRecord(invoiceDto, user);
-                results.add(result);
-                successfulCount++;
+                results.add(Gstr2bUploadResponse.InvoiceResult.builder()
+                        .invoiceNumber(dto.getInvoiceNumber())
+                        .success(true)
+                        .message("Imported")
+                        .invoiceId(saved.getId())
+                        .build());
+                successCount++;
 
             } catch (Exception e) {
-                log.error("Unhandled exception processing invoice {}: {}", invoiceDto.getInvoiceNumber(), e.getMessage(), e);
-                failedCount++;
+                log.error("Failed invoice {}: {}", dto.getInvoiceNumber(), e.getMessage());
                 results.add(Gstr2bUploadResponse.InvoiceResult.builder()
-                        .invoiceNumber(invoiceDto.getInvoiceNumber())
+                        .invoiceNumber(dto.getInvoiceNumber())
                         .success(false)
-                        .message("Processing error: " + e.getMessage())
+                        .message(e.getMessage())
                         .build());
+                failCount++;
             }
         }
 
-        log.info("GSTR2B upload batch processed for user: {}. Total: {}, Successful: {}, Failed: {}",
-                email, request.getInvoices().size(), successfulCount, failedCount);
+        BigDecimal totalItc = totalCgst.add(totalSgst).add(totalIgst);
+
+        // ── Save import session ────────────────────────────────────────
+        Gstr2bImportSession session = Gstr2bImportSession.builder()
+                .user(user)
+                .taxPeriod(taxPeriod)
+                .totalInvoices(request.getInvoices().size())
+                .successful(successCount)
+                .failed(failCount)
+                .totalTaxable(totalTaxable)
+                .totalCgst(totalCgst)
+                .totalSgst(totalSgst)
+                .totalIgst(totalIgst)
+                .totalItc(totalItc)
+                .status(failCount == 0 ? "COMPLETED" : "PARTIAL")
+                .importedAt(LocalDateTime.now())
+                .build();
+
+        importSessionRepository.save(session);
+
+        log.info("GSTR-2B import done — period: {}, ok: {}, failed: {}, ITC: {}",
+                taxPeriod, successCount, failCount, totalItc);
 
         return Gstr2bUploadResponse.builder()
                 .totalProcessed(request.getInvoices().size())
-                .successfulCount(successfulCount)
-                .failedCount(failedCount)
+                .successfulCount(successCount)
+                .failedCount(failCount)
+                .taxPeriod(taxPeriod)
+                .totalItc(totalItc)
                 .results(results)
                 .timestamp(LocalDateTime.now())
                 .build();
     }
 
-    /**
-     * Persists the verified GSTR2B invoice and its nested line items.
-     */
-    private Gstr2bUploadResponse.InvoiceResult saveInvoiceRecord(Gstr2bInvoiceDto invoiceDto, User user) {
-        log.debug("Persisting GSTR2B invoice entity: {}", invoiceDto.getInvoiceNumber());
+    // ── Private helpers ────────────────────────────────────────────────
+
+    private Gstr2bInvoice saveInvoice(Gstr2bInvoiceDto dto, User user, String taxPeriod) {
 
         Gstr2bInvoice invoice = Gstr2bInvoice.builder()
                 .user(user)
-                .supplierName(invoiceDto.getSupplierName())
-                .supplierGstin(invoiceDto.getSupplierGstin())
-                .buyerGstin(invoiceDto.getBuyerGstin())
-                .invoiceNumber(invoiceDto.getInvoiceNumber())
-                .invoiceDate(invoiceDto.getInvoiceDate())
-                .taxableValue(invoiceDto.getTaxableValue())
-                .cgst(invoiceDto.getCgst())
-                .sgst(invoiceDto.getSgst())
-                .igst(invoiceDto.getIgst())
-                .grandTotal(invoiceDto.getGrandTotal())
-
+                .taxPeriod(taxPeriod)
+                .supplierName(dto.getSupplierName())
+                .supplierGstin(dto.getSupplierGstin())
+                .buyerGstin(dto.getBuyerGstin())
+                .invoiceNumber(dto.getInvoiceNumber())
+                .invoiceDate(dto.getInvoiceDate())
+                .taxableValue(dto.getTaxableValue())
+                .cgst(nvl(dto.getCgst()))
+                .sgst(nvl(dto.getSgst()))
+                .igst(nvl(dto.getIgst()))
+                .grandTotal(dto.getGrandTotal())
+                .importStatus(Gstr2bInvoice.ImportStatus.IMPORTED.name())
+                .matchStatus(Gstr2bInvoice.MatchStatus.NOT_CHECKED.name())
                 .build();
 
-        Gstr2bInvoice savedInvoice = gstr2bInvoiceRepository.save(invoice);
-        log.debug("Saved GSTR2B invoice header with ID: {}", savedInvoice.getId());
+        Gstr2bInvoice saved = gstr2bInvoiceRepository.save(invoice);
 
-        List<Gstr2bLineItem> lineItems = invoiceDto.getLineItems().stream()
-                .map(itemDto -> Gstr2bLineItem.builder()
-                        .gstr2bInvoice(savedInvoice)
-                        .description(itemDto.getDescription())
-                        .quantity(itemDto.getQuantity())
-                        .unitPrice(itemDto.getUnitPrice())
-                        .hsnCode(itemDto.getHsnCode())
-                        .gstRate(itemDto.getGstRate())
-                        .taxableValue(itemDto.getTaxableValue())
-                        .cgstAmount(itemDto.getCgstAmount())
-                        .sgstAmount(itemDto.getSgstAmount())
-                        .igstAmount(itemDto.getIgstAmount())
-                        .build())
-                .collect(Collectors.toList());
+        // Line items (optional — some JSON exports omit them)
+        if (dto.getLineItems() != null && !dto.getLineItems().isEmpty()) {
+            List<Gstr2bLineItem> lineItems = dto.getLineItems().stream()
+                    .map(item -> buildLineItem(item, saved))
+                    .collect(Collectors.toList());
+            gstr2bLineItemRepository.saveAll(lineItems);
+        }
 
-        gstr2bLineItemRepository.saveAll(lineItems);
-        log.debug("Successfully saved {} line items for invoice number: {}", lineItems.size(), invoiceDto.getInvoiceNumber());
+        return saved;
+    }
 
-        return Gstr2bUploadResponse.InvoiceResult.builder()
-                .invoiceNumber(invoiceDto.getInvoiceNumber())
-                .success(true)
-                .message("Invoice uploaded successfully")
-                .invoiceId(savedInvoice.getId())
+    private Gstr2bLineItem buildLineItem(Gstr2bLineItemDto dto, Gstr2bInvoice invoice) {
+        return Gstr2bLineItem.builder()
+                .gstr2bInvoice(invoice)
+                .description(dto.getDescription())
+                .quantity(dto.getQuantity())
+                .unitPrice(dto.getUnitPrice())
+                .hsnCode(dto.getHsnCode())
+                .gstRate(dto.getGstRate())
+                .taxableValue(dto.getTaxableValue())
+                .cgstAmount(nvl(dto.getCgstAmount()))
+                .sgstAmount(nvl(dto.getSgstAmount()))
+                .igstAmount(nvl(dto.getIgstAmount()))
+                .cess(nvl(dto.getCessAmount()))
+                .itcEligible(dto.getItcEligible() != null ? dto.getItcEligible() : true)
+                .reverseCharge(dto.getReverseCharge() != null ? dto.getReverseCharge() : false)
                 .build();
+    }
+
+    private static BigDecimal nvl(BigDecimal v) {
+        return v != null ? v : BigDecimal.ZERO;
     }
 }

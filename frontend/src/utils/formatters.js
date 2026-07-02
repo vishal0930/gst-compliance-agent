@@ -18,8 +18,13 @@ export const formatDateShort = (date) => {
   return dayjs(date).format('DD/MM/YY');
 };
 
-export const formatPeriod = (month, year) => {
-  return `${String(month).padStart(2, '0')}-${year}`;
+export const formatTaxPeriod = (period) => {
+  if (!period) return "";
+
+  return dayjs()
+    .year(period.year)
+    .month(period.month - 1)
+    .format("MMMM YYYY");
 };
 
 export const getCurrentPeriod = () => {
@@ -56,6 +61,7 @@ export const getStatusColor = (status) => {
     COMPLETED: 'green',
     RUNNING: 'processing',
     FAILED: 'red',
+    DONE: 'green',
   };
   return colors[status] || 'default';
 };
@@ -69,6 +75,7 @@ export const getStatusBadge = (status) => {
     COMPLETED: { color: 'green', text: 'Completed' },
     RUNNING: { color: 'processing', text: 'Running' },
     FAILED: { color: 'red', text: 'Failed' },
+    DONE: { color: 'green', text: 'DONE' },
   };
   return badges[status] || { color: 'default', text: status };
 };

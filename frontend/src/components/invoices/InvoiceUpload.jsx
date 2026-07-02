@@ -61,7 +61,7 @@ const InvoiceUpload = ({ onUploadSuccess }) => {
   };
 
   return (
-    <div className="p-8">
+    <div className="p-4 md:p-8">
 
       <div className="max-w-3xl mx-auto">
 
@@ -69,23 +69,24 @@ const InvoiceUpload = ({ onUploadSuccess }) => {
           className="
             border-2
             border-dashed
-            border-slate-700
+            border-[var(--border)]
             rounded-2xl
             p-12
-            bg-slate-950
+            bg-[var(--bg-input)]
             text-center
+            shadow-inner
           "
         >
           <UploadCloud
             size={56}
-            className="mx-auto text-amber-400"
+            className="mx-auto text-[var(--accent)]"
           />
 
-          <h2 className="mt-6 text-2xl font-bold text-white">
+          <h2 className="mt-6 text-2xl font-bold text-[var(--text-primary)]">
             Upload GST Invoice
           </h2>
 
-          <p className="mt-2 text-slate-400">
+          <p className="mt-2 text-[var(--text-secondary)]">
             Upload PDF, PNG or JPG invoices for AI processing.
           </p>
 
@@ -96,13 +97,15 @@ const InvoiceUpload = ({ onUploadSuccess }) => {
               inline-flex
               cursor-pointer
               rounded-xl
-              bg-amber-500
+              bg-[var(--accent)]
               px-6
               py-3
               font-semibold
-              text-slate-950
-              hover:bg-amber-400
+              text-white
+              hover:bg-[var(--accent-hover)]
               transition
+              shadow-md
+              shadow-[rgba(139,92,246,0.15)]
             "
           >
             Choose File
@@ -117,14 +120,14 @@ const InvoiceUpload = ({ onUploadSuccess }) => {
           />
 
           {file && (
-            <div className="mt-8 flex items-center justify-center gap-3 rounded-xl border border-slate-800 bg-slate-900 p-4">
+            <div className="mt-8 flex items-center justify-center gap-3 rounded-xl border border-[var(--border)] bg-card p-4">
 
               <FileText
                 size={22}
-                className="text-amber-400"
+                className="text-[var(--accent)]"
               />
 
-              <span className="text-white">
+              <span className="text-[var(--text-primary)]">
                 {file.name}
               </span>
 
@@ -136,10 +139,10 @@ const InvoiceUpload = ({ onUploadSuccess }) => {
 
               <Progress
                 percent={progress}
-                strokeColor="#f59e0b"
+                strokeColor="var(--accent)"
               />
 
-              <p className="mt-3 text-sm text-slate-400">
+              <p className="mt-3 text-sm text-[var(--text-secondary)]">
                 Uploading invoice...
               </p>
 
@@ -153,14 +156,16 @@ const InvoiceUpload = ({ onUploadSuccess }) => {
               mt-8
               w-full
               rounded-xl
-              bg-amber-500
+              bg-[var(--accent)]
               py-3
               font-semibold
-              text-slate-950
+              text-white
               transition
-              hover:bg-amber-400
+              hover:bg-[var(--accent-hover)]
               disabled:cursor-not-allowed
               disabled:opacity-50
+              shadow-md
+              shadow-[rgba(139,92,246,0.15)]
             "
           >
             {uploading

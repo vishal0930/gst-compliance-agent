@@ -2,7 +2,6 @@ package com.gstcompliance.controller;
 
 import com.gstcompliance.dto.response.ApiResponse;
 import com.gstcompliance.dto.response.ComplianceBriefResponse;
-import com.gstcompliance.model.ComplianceBrief;
 import com.gstcompliance.service.InvoiceService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -28,32 +27,34 @@ public class ReturnController {
     private final InvoiceService invoiceService;
 
     @PostMapping("/draft")
-    public ResponseEntity<ApiResponse<Map<String, String>>> draftReturn(
+    public ResponseEntity<ApiResponse<Map<String, Object>>> draftReturn(
             @RequestBody Map<String, Integer> request,
             Authentication authentication) {
 
         String email = authentication.getName();
         int month = request.getOrDefault("month", LocalDate.now().getMonthValue());
-        int year = request.getOrDefault("year", LocalDate.now().getYear());
+        int year  = request.getOrDefault("year",  LocalDate.now().getYear());
 
         log.info("Drafting return for user: {}, period: {}-{}", email, month, year);
 
-        String jobId = UUID.randomUUID().toString();
+        // Kick off the async generation
+        invoiceService.generateReturnDraftAsync(email, month, year, null);
 
-        Map<String, String> response = new HashMap<>();
-        response.put("jobId", jobId);
-        response.put("status", "QUEUED");
+        Map<String, Object> response = new HashMap<>();
+        response.put("period",  String.format("%02d-%04d", month, year));
+        response.put("status",  "GENERATING");
+        response.put("message", "Return draft is being generated. Check the drafts list shortly.");
 
-        return ResponseEntity.ok(ApiResponse.success("Return draft queued", response));
+        return ResponseEntity.ok(ApiResponse.success("Return draft generation started", response));
     }
 
     @GetMapping
-    public ResponseEntity<ApiResponse<Page<ComplianceBrief>>> getDrafts(
+    public ResponseEntity<ApiResponse<Page<ComplianceBriefResponse>>> getDrafts(
             Authentication authentication,
             Pageable pageable) {
 
         String email = authentication.getName();
-        Page<ComplianceBrief> drafts = invoiceService.getReturnDrafts(email, pageable);
+        Page<ComplianceBriefResponse> drafts = invoiceService.getReturnDraftResponses(email, pageable);
         return ResponseEntity.ok(ApiResponse.success("Drafts retrieved", drafts));
     }
 

@@ -1,133 +1,152 @@
 import React from 'react';
-import { Card, Form, Switch, Button, Space, Divider, Select, InputNumber } from 'antd';
-import { Settings as SettingsIcon, Bell, Shield, Database } from 'lucide-react';
-import useAuthStore from '../store/authStore';
+import { Card, Form, Switch, Button, Divider, Select, message } from 'antd';
+import { Settings as SettingsIcon, Bell, Palette, Database } from 'lucide-react';
+import useUiStore from '../store/uiStore';
+
+/**
+ * Settings page.
+ * - Theme toggle is wired to uiStore (persisted via zustand/persist).
+ * - Notification preferences and data preferences are stored in localStorage
+ *   since the backend does not yet expose a user-preferences endpoint.
+ * - Two-Factor Authentication is shown as coming soon (backend not implemented).
+ */
+const PREFS_KEY = 'gst_user_prefs';
+
+const loadPrefs = () => {
+  try { return JSON.parse(localStorage.getItem(PREFS_KEY)) || {}; } catch { return {}; }
+};
 
 const Settings = () => {
-  const { user } = useAuthStore();
-  const [form] = Form.useForm();
+  const { theme, toggleTheme, gstPeriod, setGstPeriod } = useUiStore();
+  const [notifForm] = Form.useForm();
+  const [dataForm] = Form.useForm();
 
-  const onFinish = (values) => {
-    console.log('Settings update:', values);
-    // Settings update requires backend endpoint
+  const saved = loadPrefs();
+
+  const saveNotifications = (values) => {
+    localStorage.setItem(PREFS_KEY, JSON.stringify({ ...loadPrefs(), notifications: values }));
+    message.success('Notification preferences saved');
   };
 
+  const saveDataPrefs = (values) => {
+    localStorage.setItem(PREFS_KEY, JSON.stringify({ ...loadPrefs(), data: values }));
+    message.success('Data preferences saved');
+  };
+
+  const sectionCard = (icon, title, children) => (
+    <Card
+      title={<span style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, fontSize: 14, color: 'var(--text-primary)' }}>
+        {icon}{title}
+      </span>}
+      style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}
+    >
+      {children}
+    </Card>
+  );
+
   return (
-    <div className="p-4 space-y-6">
-      <div className="flex items-center gap-2 mb-4">
-        <SettingsIcon className="text-amber-400" size={20} />
-        <h1 className="text-2xl font-bold text-white">Settings</h1>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 720 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ background: 'var(--accent-soft)', borderRadius: 10, padding: 10 }}>
+          <SettingsIcon size={20} style={{ color: 'var(--accent)' }} />
+        </div>
+        <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: 'var(--text-primary)' }}>
+          Settings
+        </h1>
       </div>
 
-      <Card 
-        title={
-          <div className="flex items-center gap-2">
-            <Bell size={16} className="text-amber-400" />
-            <span>Notifications</span>
+      {/* ── Appearance ─────────────────────────────────────── */}
+      {sectionCard(
+        <Palette size={16} style={{ color: 'var(--accent)' }} />,
+        'Appearance',
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 0' }}>
+          <div>
+            <p style={{ margin: 0, fontWeight: 600, fontSize: 13, color: 'var(--text-primary)' }}>
+              {theme === 'dark' ? 'Dark Mode' : 'Light Mode'}
+            </p>
+            <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--text-muted)' }}>
+              Persisted across sessions
+            </p>
           </div>
-        }
-        className="bg-slate-900 border-slate-800"
-      >
+          <Switch
+            checked={theme === 'dark'}
+            onChange={toggleTheme}
+            checkedChildren="Dark"
+            unCheckedChildren="Light"
+          />
+        </div>
+      )}
+
+      {/* ── Notifications ───────────────────────────────────── */}
+      {sectionCard(
+        <Bell size={16} style={{ color: 'var(--accent)' }} />,
+        'Notifications',
         <Form
-          form={form}
+          form={notifForm}
           layout="vertical"
-          onFinish={onFinish}
-          initialValues={{
+          onFinish={saveNotifications}
+          initialValues={saved.notifications || {
             emailNotifications: true,
             deadlineAlerts: true,
             mismatchAlerts: true,
             reconciliationComplete: true,
           }}
         >
-          <Form.Item
-            label="Email Notifications"
-            name="emailNotifications"
-            valuePropName="checked"
-          >
-            <Switch />
-          </Form.Item>
-
-          <Form.Item
-            label="Deadline Alerts"
-            name="deadlineAlerts"
-            valuePropName="checked"
-          >
-            <Switch />
-          </Form.Item>
-
-          <Form.Item
-            label="Mismatch Alerts"
-            name="mismatchAlerts"
-            valuePropName="checked"
-          >
-            <Switch />
-          </Form.Item>
-
-          <Form.Item
-            label="Reconciliation Complete"
-            name="reconciliationComplete"
-            valuePropName="checked"
-          >
-            <Switch />
-          </Form.Item>
+          {[
+            { name: 'emailNotifications', label: 'Email Notifications', desc: 'Receive emails for important compliance events' },
+            { name: 'deadlineAlerts', label: 'Deadline Alerts', desc: 'Get notified before GST filing deadlines' },
+            { name: 'mismatchAlerts', label: 'Mismatch Alerts', desc: 'Alert when reconciliation finds mismatches' },
+            { name: 'reconciliationComplete', label: 'Reconciliation Complete', desc: 'Notify when a reconciliation run finishes' },
+          ].map(({ name, label, desc }) => (
+            <Form.Item key={name} name={name} valuePropName="checked" style={{ marginBottom: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div>
+                  <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{label}</p>
+                  <p style={{ margin: '1px 0 0', fontSize: 11, color: 'var(--text-muted)' }}>{desc}</p>
+                </div>
+                <Form.Item name={name} valuePropName="checked" noStyle>
+                  <Switch size="small" />
+                </Form.Item>
+              </div>
+            </Form.Item>
+          ))}
+          <p style={{ margin: '0 0 10px', fontSize: 11, color: 'var(--text-muted)' }}>
+            ℹ️ Stored locally — backend notification endpoint not yet available.
+          </p>
+          <Button type="primary" htmlType="submit">Save Preferences</Button>
         </Form>
-      </Card>
+      )}
 
-      <Card
-        title={
-          <div className="flex items-center gap-2">
-            <Shield size={16} className="text-amber-400" />
-            <span>Security</span>
-          </div>
-        }
-        className="bg-slate-900 border-slate-800"
-      >
-        <Form layout="vertical">
-          <Form.Item label="Session Timeout (minutes)">
-            <InputNumber min={5} max={120} defaultValue={30} className="w-full bg-slate-800 border-slate-700" />
-          </Form.Item>
-
-          <Form.Item label="Two-Factor Authentication">
-            <Switch disabled />
-          </Form.Item>
-        </Form>
-      </Card>
-
-      <Card
-        title={
-          <div className="flex items-center gap-2">
-            <Database size={16} className="text-amber-400" />
-            <span>Data & Preferences</span>
-          </div>
-        }
-        className="bg-slate-900 border-slate-800"
-      >
-        <Form layout="vertical">
-          <Form.Item label="Default GST Period">
+      {/* ── Data & Preferences ──────────────────────────────── */}
+      {sectionCard(
+        <Database size={16} style={{ color: 'var(--accent)' }} />,
+        'Data & Preferences',
+        <Form
+          form={dataForm}
+          layout="vertical"
+          onFinish={saveDataPrefs}
+          initialValues={saved.data || { defaultPageSize: 25 }}
+        >
+          <Form.Item
+            label={<span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Default Page Size</span>}
+            name="defaultPageSize"
+          >
             <Select
-              defaultValue="current"
               options={[
-                { label: 'Current Period', value: 'current' },
-                { label: 'Previous Period', value: 'previous' },
+                { value: 25, label: '25 rows' },
+                { value: 50, label: '50 rows' },
+                { value: 100, label: '100 rows' },
+                { value: 250, label: '250 rows' },
               ]}
-              className="bg-slate-800 border-slate-700"
+              style={{ width: 140 }}
             />
           </Form.Item>
-
-          <Form.Item label="Items Per Page">
-            <InputNumber min={10} max={100} step={10} defaultValue={20} className="w-full bg-slate-800 border-slate-700" />
-          </Form.Item>
+          <p style={{ margin: '0 0 10px', fontSize: 11, color: 'var(--text-muted)' }}>
+            ℹ️ Stored locally.
+          </p>
+          <Button type="primary" htmlType="submit">Save Preferences</Button>
         </Form>
-      </Card>
-
-      <div className="flex justify-end gap-2">
-        <Button type="primary" className="bg-amber-500 text-slate-950 border-amber-500 hover:bg-amber-400">
-          Save Changes
-        </Button>
-        <Button className="border-slate-700 text-slate-300">
-          Reset to Defaults
-        </Button>
-      </div>
+      )}
     </div>
   );
 };

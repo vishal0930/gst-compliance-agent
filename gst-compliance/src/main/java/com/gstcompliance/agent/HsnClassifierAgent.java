@@ -3,13 +3,13 @@ package com.gstcompliance.agent;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.gstcompliance.agent.base.BaseAgent;
+import com.gstcompliance.cache.HsnCacheService;
 import com.gstcompliance.dto.response.InvoiceParseResponse;
 import com.gstcompliance.model.HsnCode;
 import com.gstcompliance.service.HsnLookupService;
 import dev.langchain4j.model.chat.ChatLanguageModel;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
@@ -18,6 +18,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import static com.gstcompliance.util.ConversionUtils.toBigDecimal;
+
 @Component
 @Slf4j
 public class HsnClassifierAgent extends BaseAgent<List<InvoiceParseResponse.LineItemDTO>, List<Map<String, Object>>> {
@@ -25,16 +27,19 @@ public class HsnClassifierAgent extends BaseAgent<List<InvoiceParseResponse.Line
     private final HsnLookupService hsnLookupService;
     private final ChatLanguageModel llmModel;
     private final ObjectMapper objectMapper;
+    private final HsnCacheService hsnCacheService;
     private final HsnClassifierAgent self;
 
     public HsnClassifierAgent(HsnLookupService hsnLookupService,
                               @Qualifier("invoiceParserModel") ChatLanguageModel llmModel,
                               ObjectMapper objectMapper,
+                              HsnCacheService hsnCacheService,
                               @org.springframework.context.annotation.Lazy HsnClassifierAgent self) {
         super("HsnClassifier");
         this.hsnLookupService = hsnLookupService;
         this.llmModel = llmModel;
         this.objectMapper = objectMapper;
+        this.hsnCacheService = hsnCacheService;
         this.self = self;
     }
 
@@ -51,18 +56,45 @@ public class HsnClassifierAgent extends BaseAgent<List<InvoiceParseResponse.Line
         return results;
     }
 
-    @Cacheable(value = "hsnClassification", key = "#item.description.trim().toLowerCase()", unless = "#result.confidence < 0.7")
     public Map<String, Object> classifyItem(InvoiceParseResponse.LineItemDTO item) {
         String description = item.getDescription();
         log.debug("Classifying: {}", description);
 
+        // Check Redis cache first - disabled to avoid type deserialization issues returning null/Double rates
+        /*
+        Map<String, Object> cachedResult = hsnCacheService.getCachedClassification(description);
+
+        if (cachedResult != null) {
+
+            BigDecimal confidence = toBigDecimal(cachedResult.get("confidence"));
+
+            if (confidence != null &&
+                    confidence.compareTo(BigDecimal.valueOf(0.7)) >= 0) {
+
+                log.info("Cache hit for '{}' with confidence {}", description, confidence);
+                return cachedResult;
+            }
+        }
+        */
+
         try {
             List<HsnCode> candidates = hsnLookupService.findTopCandidates(description, 5);
+            log.info("================ HSN CANDIDATES =================");
+            log.info("Top HSN candidates:");
+            for (HsnCode c : candidates) {
+                log.info("HSN={} GST={} DESC={}",
+                        c.getHsnCode(),
+                        c.getGstRate(),
+                        c.getDescription());
+            }
+            log.info("================================================");
             log.info("Found {} candidates for '{}'", candidates.size(), description);
 
             if (candidates.isEmpty()) {
                 log.warn("No candidates found for '{}', using fallback", description);
-                return createFallbackResult(description);
+                Map<String, Object> fallback = createFallbackResult(description);
+                // hsnCacheService.cacheClassification(description, fallback);
+                return fallback;
             }
 
             String prompt = buildClassificationPrompt(description, candidates);
@@ -87,7 +119,15 @@ public class HsnClassifierAgent extends BaseAgent<List<InvoiceParseResponse.Line
             HsnCode selectedCode = candidates.stream()
                     .filter(c -> c.getHsnCode().equals(selectedHsn))
                     .findFirst()
-                    .orElse(candidates.get(0));
+                    .orElseGet(() -> {
+
+                        log.warn(
+                                "LLM selected invalid HSN. Falling back to {}",
+                                candidates.get(0).getHsnCode()
+                        );
+
+                        return candidates.get(0);
+                    });
             log.info(
                     "HSN Entity -> HSN={}, GST={}, CGST={}, SGST={}, IGST={}",
                     selectedCode.getHsnCode(),
@@ -108,11 +148,24 @@ public class HsnClassifierAgent extends BaseAgent<List<InvoiceParseResponse.Line
             result.put("needsReview", false);
             result.put("reasoning", parsedResponse.getOrDefault("reasoning", "Matched from HSN master"));
 
+            // Cache the result if confidence is >= 0.7
+            BigDecimal confidence = toBigDecimal(result.get("confidence"));
+
+            if (confidence != null &&
+                    confidence.compareTo(BigDecimal.valueOf(0.7)) >= 0) {
+
+                result.put("confidence", confidence);
+
+                // hsnCacheService.cacheClassification(description, result);
+            }
+
             return result;
 
         } catch (Exception e) {
             log.error("Classification failed for '{}': {}", description, e.getMessage());
-            return createFallbackResult(description);
+            Map<String, Object> fallback = createFallbackResult(description);
+            // hsnCacheService.cacheClassification(description, fallback);
+            return fallback;
         }
     }
 
@@ -137,6 +190,22 @@ public class HsnClassifierAgent extends BaseAgent<List<InvoiceParseResponse.Line
 
         return result;
     }
+    private BigDecimal toBigDecimal(Object value) {
+
+        if (value == null) {
+            return null;
+        }
+
+        if (value instanceof BigDecimal bd) {
+            return bd;
+        }
+
+        if (value instanceof Number n) {
+            return BigDecimal.valueOf(n.doubleValue());
+        }
+
+        return new BigDecimal(value.toString());
+    }
 
     private Map<String, Object> parseLLMResponse(String response) {
         try {
@@ -160,7 +229,37 @@ public class HsnClassifierAgent extends BaseAgent<List<InvoiceParseResponse.Line
 
     private String buildClassificationPrompt(String description, List<HsnCode> candidates) {
         StringBuilder sb = new StringBuilder();
-        sb.append("Given the item description and HSN code candidates, select the most appropriate HSN code.\n\n");
+        sb.append("""
+You are an expert Indian GST HSN Classification Assistant.
+
+Your task is to classify the product into ONE HSN code from the provided candidates.
+
+IMPORTANT RULES:
+
+1. You MUST choose ONLY one HSN from the candidate list.
+2. NEVER invent or generate a new HSN code.
+3. Prefer the candidate whose description best matches the product.
+4. Prefer specific product classifications over generic categories.
+5. Consider the complete product description, including:
+   - Product type
+   - Material
+   - Industry
+   - Intended use
+   - Packaging (if relevant)
+6. Do NOT select a generic petroleum heading if a more specific lubricating preparation or industrial product exists.
+7. If none of the candidates clearly match, choose the closest candidate and set confidence below 0.80.
+8. Confidence must be between 0.0 and 1.0.
+9. Keep the reasoning concise (maximum 20 words).
+
+Return ONLY valid JSON.
+
+{
+  "hsnCode": "",
+  "confidence": 0.0,
+  "reasoning": ""
+}
+
+""");
         sb.append("ITEM: ").append(description).append("\n\n");
         sb.append("CANDIDATES:\n");
 

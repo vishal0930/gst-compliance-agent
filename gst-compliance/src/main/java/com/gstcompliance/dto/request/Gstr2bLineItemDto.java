@@ -57,4 +57,13 @@ public class Gstr2bLineItemDto {
     @DecimalMin(value = "0.00", inclusive = true, message = "IGST cannot be negative")
     @Digits(integer = 15, fraction = 2, message = "Invalid decimal format")
     private BigDecimal igstAmount;
+
+    // Optional fields — future-proof, not mandatory
+    private BigDecimal cessAmount;
+
+    @Builder.Default
+    private Boolean itcEligible = true;
+
+    @Builder.Default
+    private Boolean reverseCharge = false;
 }

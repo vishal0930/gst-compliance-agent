@@ -1,8 +1,21 @@
 import client from './client';
 
-// No specific returns backend API provided in specification
-// This file serves as a placeholder for future returns endpoints
 export const returnsApi = {
-  // Placeholder for future returns endpoints
-  // Remove when backend provides actual returns API
+  draftReturn: (month, year) =>
+    client.post('/returns/draft', { month, year }),
+
+  getDrafts: (params = {}) =>
+    client.get('/returns', { params }),
+
+  getDraft: (id) =>
+    client.get(`/returns/${id}`),
+
+  getGstr3bDraft: (id) =>
+    client.get(`/returns/${id}/gstr3b`),
+
+  approveDraft: (id) =>
+    client.post(`/returns/${id}/approve`),
+
+  exportDraft: (id, format = 'pdf') =>
+    client.get(`/returns/${id}/export`, { params: { format }, responseType: 'blob' }),
 };

@@ -21,6 +21,8 @@ public interface ReconciliationRepository extends JpaRepository<ReconciliationRe
 
     Optional<ReconciliationRecord> findByUserIdAndTaxPeriod(UUID userId, String taxPeriod);
 
+    Page<ReconciliationRecord> findByUserIdAndTaxPeriod(UUID userId, String taxPeriod, Pageable pageable);
+
     @Query("SELECT r FROM ReconciliationRecord r WHERE r.user.id = :userId AND r.status = :status")
     List<ReconciliationRecord> findByUserIdAndStatus(
             @Param("userId") UUID userId,

@@ -4,14 +4,25 @@ import { message } from 'antd';
 
 
 import { invoiceApi } from '../api/invoices';
-
+import useUiStore from "../store/uiStore";
 export const useInvoices = (params = {}) => {
   const queryClient = useQueryClient();
+  const gstPeriod = useUiStore((state) => state.gstPeriod);
 
   // 1. Fetch Invoices Query
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['invoices', params],
-    queryFn: () => invoiceApi.getInvoices(params),
+    queryKey: [
+  "invoices",
+  gstPeriod.month,
+  gstPeriod.year,
+  params,
+],
+   queryFn: () =>
+  invoiceApi.getInvoices({
+    ...params,
+    month: gstPeriod.month,
+    year: gstPeriod.year,
+  }),
     staleTime: 60000, // 1 minute stale time
   });
 

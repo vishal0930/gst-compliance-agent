@@ -64,7 +64,7 @@ public class HsnCode {
     @Column(name = "sub_heading", length = 6)
     private String subHeading;
 
-    @Column(name = "embedding", columnDefinition = "vector(1536)")
+    @Column(name = "embedding", columnDefinition = "vector(768)")
     private String embedding;
 
     @CreationTimestamp

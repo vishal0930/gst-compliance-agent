@@ -66,7 +66,6 @@ public class Gstr2bInvoiceDto {
     @Digits(integer = 15, fraction = 2, message = "Invalid decimal format")
     private BigDecimal grandTotal;
 
-    @NotEmpty(message = "Line items cannot be empty")
     @Valid
     private List<Gstr2bLineItemDto> lineItems;
 }

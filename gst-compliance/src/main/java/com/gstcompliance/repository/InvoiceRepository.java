@@ -20,8 +20,8 @@ public interface InvoiceRepository extends JpaRepository<Invoice, UUID> {
     Optional<Invoice> findByUserIdAndInvoiceNumberAndVendorGstin(
             UUID userId, String invoiceNumber, String vendorGstin);
 
-    List<Invoice> findByUserIdAndInvoiceDateBetween(
-            UUID userId, LocalDate startDate, LocalDate endDate);
+    Page<Invoice> findByUserIdAndInvoiceDateBetween(
+            UUID userId, LocalDate startDate, LocalDate endDate, Pageable pageable);
 
     @Query("SELECT i FROM Invoice i WHERE i.user.id = :userId AND i.parseStatus = :status")
     List<Invoice> findByUserIdAndStatus(@Param("userId") UUID userId, @Param("status") String status);

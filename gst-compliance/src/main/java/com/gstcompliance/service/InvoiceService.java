@@ -184,28 +184,81 @@ public class InvoiceService {
         log.warn("Unsupported numeric value: {}", value);
         return null;
     }
-
-    public Page<Invoice> getInvoices(String email, Pageable pageable) {
+    public Page<Invoice> getInvoices(
+            String email,
+            int month,
+            int year,
+            Pageable pageable
+    ) {
         User user = getUserByEmail(email);
-        return invoiceRepository.findByUserId(user.getId(), pageable);
-    }
 
+        LocalDate startDate = LocalDate.of(year, month, 1);
+        LocalDate endDate = startDate.withDayOfMonth(startDate.lengthOfMonth());
+
+        return invoiceRepository.findByUserIdAndInvoiceDateBetween(
+                user.getId(),
+                startDate,
+                endDate,
+                pageable
+        );
+    }
     public Invoice getInvoice(UUID id) {
         return invoiceRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Invoice not found: " + id));
+                .orElseThrow(() ->
+                        new ResourceNotFoundException("Invoice not found: " + id));
     }
-
     @Transactional
-    public Invoice updateInvoice(UUID id, Invoice updatedInvoice) {
-        Invoice existing = getInvoice(id);
-        existing.setVendorName(updatedInvoice.getVendorName());
-        existing.setVendorGstin(updatedInvoice.getVendorGstin());
-        existing.setInvoiceNumber(updatedInvoice.getInvoiceNumber());
-        existing.setInvoiceDate(updatedInvoice.getInvoiceDate());
-        existing.setTotalAmount(updatedInvoice.getTotalAmount());
-        existing.setTotalGst(updatedInvoice.getTotalGst());
+    public InvoiceResponse updateInvoiceAndLineItems(UUID id, InvoiceResponse dto, String email) {
+        User user = getUserByEmail(email);
+        Invoice existing = invoiceRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Invoice not found: " + id));
+
+        if (!existing.getUser().getId().equals(user.getId())) {
+            throw new ResourceNotFoundException("Invoice not found");
+        }
+
+        existing.setVendorName(dto.getVendorName());
+        existing.setVendorGstin(dto.getVendorGstin());
+        existing.setInvoiceNumber(dto.getInvoiceNumber());
+        existing.setInvoiceDate(dto.getInvoiceDate());
+        existing.setTotalAmount(dto.getTotalAmount());
+        existing.setTotalGst(dto.getTotalGst());
         existing.setParseStatus(Invoice.ParseStatus.DONE.name());
-        return invoiceRepository.save(existing);
+
+        if (dto.getLineItems() != null) {
+            for (InvoiceResponse.LineItemResponse itemDto : dto.getLineItems()) {
+                LineItem li;
+                if (itemDto.getId() != null) {
+                    li = lineItemRepository.findById(itemDto.getId())
+                            .orElseGet(() -> {
+                                LineItem newItem = new LineItem();
+                                newItem.setInvoice(existing);
+                                return newItem;
+                            });
+                } else {
+                    li = new LineItem();
+                    li.setInvoice(existing);
+                }
+
+                li.setDescription(itemDto.getDescription());
+                li.setQuantity(itemDto.getQuantity());
+                li.setUnitPrice(itemDto.getUnitPrice());
+                li.setHsnCode(itemDto.getHsnCode());
+                li.setGstRate(itemDto.getGstRate());
+                li.setTaxableValue(itemDto.getTaxableValue());
+                li.setCgstAmount(itemDto.getCgstAmount());
+                li.setSgstAmount(itemDto.getSgstAmount());
+                li.setIgstAmount(itemDto.getIgstAmount());
+                li.setHsnConfidence(itemDto.getHsnConfidence());
+                li.setNeedsReview(Boolean.TRUE.equals(itemDto.getNeedsReview()));
+                li.setReviewReason(itemDto.getReviewReason());
+
+                lineItemRepository.save(li);
+            }
+        }
+
+        Invoice saved = invoiceRepository.save(existing);
+        return toResponse(saved);
     }
 
     @Transactional
@@ -221,11 +274,25 @@ public class InvoiceService {
         invoiceRepository.delete(invoice);
     }
 
-    public List<Invoice> getInvoicesForPeriod(String email, int month, int year) {
+    public List<Invoice> getInvoicesForPeriod(
+            String email,
+            int month,
+            int year
+    ) {
+
         User user = getUserByEmail(email);
+
         LocalDate start = LocalDate.of(year, month, 1);
         LocalDate end = start.withDayOfMonth(start.lengthOfMonth());
-        return invoiceRepository.findByUserIdAndInvoiceDateBetween(user.getId(), start, end);
+
+        return invoiceRepository
+                .findByUserIdAndInvoiceDateBetween(
+                        user.getId(),
+                        start,
+                        end,
+                        Pageable.unpaged()
+                )
+                .getContent();
     }
 
     /**
@@ -296,16 +363,9 @@ public class InvoiceService {
             return mismatches;
         }
 
-        // Filter by mismatch type
+        // Filter by mismatch status field (backend uses "status", not "type")
         return mismatches.stream()
-                .filter(m -> {
-                    if (m instanceof Map) {
-                        Map<?, ?> map = (Map<?, ?>) m;
-                        String mismatchType = (String) map.get("type");
-                        return type.equalsIgnoreCase(mismatchType);
-                    }
-                    return false;
-                })
+                .filter(m -> type.equalsIgnoreCase(m.getStatus()))
                 .collect(Collectors.toList());
     }
 
@@ -381,6 +441,15 @@ public class InvoiceService {
     public Page<ReconciliationRecord> getReconciliationRecords(String email, Pageable pageable) {
         User user = getUserByEmail(email);
         return reconciliationRepository.findByUserId(user.getId(), pageable);
+    }
+
+    public Page<ReconciliationRecord> getReconciliationRecords(String email, Integer month, Integer year, Pageable pageable) {
+        if (month == null || year == null) {
+            return getReconciliationRecords(email, pageable);
+        }
+        User user = getUserByEmail(email);
+        String taxPeriod = String.format("%02d-%04d", month, year);
+        return reconciliationRepository.findByUserIdAndTaxPeriod(user.getId(), taxPeriod, pageable);
     }
 
     /**
@@ -522,12 +591,19 @@ public class InvoiceService {
         return complianceBriefRepository.findByUserId(user.getId(), pageable);
     }
 
-    public ComplianceBriefResponse getReturnDraft(UUID id, String email) {
-        ComplianceBrief brief = complianceBriefRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Compliance brief not found: " + id));
+    /**
+     * Returns a page of ComplianceBriefResponse DTOs (safe for serialisation).
+     */
+    public Page<ComplianceBriefResponse> getReturnDraftResponses(String email, Pageable pageable) {
+        User user = getUserByEmail(email);
+        return complianceBriefRepository.findByUserId(user.getId(), pageable)
+                .map(this::toBriefResponse);
+    }
 
+    private ComplianceBriefResponse toBriefResponse(ComplianceBrief brief) {
         return ComplianceBriefResponse.builder()
-                .userId(email)
+                .id(brief.getId())
+                .userId(brief.getUser().getEmail())
                 .period(brief.getTaxPeriod())
                 .brief(brief.getBriefText())
                 .totalSales(brief.getTotalSales())
@@ -535,8 +611,17 @@ public class InvoiceService {
                 .totalItc(brief.getTotalItc())
                 .taxLiability(brief.getTaxLiability())
                 .itcAtRisk(brief.getItcAtRisk())
-                .isComplete(brief.getIsComplete())
+                .isComplete(Boolean.TRUE.equals(brief.getIsComplete()))
+                .isApproved(Boolean.TRUE.equals(brief.getIsApproved()))
+                .generatedAt(brief.getGeneratedAt())
+                .approvedAt(brief.getApprovedAt())
                 .build();
+    }
+
+    public ComplianceBriefResponse getReturnDraft(UUID id, String email) {
+        ComplianceBrief brief = complianceBriefRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Compliance brief not found: " + id));
+        return toBriefResponse(brief);
     }
 
     public Map<String, Object> getGstr3bDraft(UUID id, String email) {
@@ -593,24 +678,72 @@ public class InvoiceService {
     }
 
     private InvoiceResponse toResponse(Invoice invoice) {
+        // Fetch line items explicitly (LAZY relation is not loaded in list queries)
+        List<LineItem> items = lineItemRepository.findByInvoiceId(invoice.getId());
+
+        // Build line-item DTOs
+        List<InvoiceResponse.LineItemResponse> lineItemResponses = items.stream()
+                .map(li -> InvoiceResponse.LineItemResponse.builder()
+                        .id(li.getId())
+                        .description(li.getDescription())
+                        .quantity(li.getQuantity())
+                        .unitPrice(li.getUnitPrice())
+                        .hsnCode(li.getHsnCode())
+                        .gstRate(li.getGstRate())
+                        .taxableValue(li.getTaxableValue())
+                        .cgstAmount(li.getCgstAmount())
+                        .sgstAmount(li.getSgstAmount())
+                        .igstAmount(li.getIgstAmount())
+                        .hsnConfidence(li.getHsnConfidence())
+                        .needsReview(li.getNeedsReview())
+                        .reviewReason(li.getReviewReason())
+                        .build())
+                .collect(Collectors.toList());
+
+        // Aggregate tax amounts from line items for the header display
+        BigDecimal cgstTotal = items.stream()
+                .map(li -> li.getCgstAmount() != null ? li.getCgstAmount() : BigDecimal.ZERO)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        BigDecimal sgstTotal = items.stream()
+                .map(li -> li.getSgstAmount() != null ? li.getSgstAmount() : BigDecimal.ZERO)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        BigDecimal igstTotal = items.stream()
+                .map(li -> li.getIgstAmount() != null ? li.getIgstAmount() : BigDecimal.ZERO)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        BigDecimal taxableTotal = items.stream()
+                .map(li -> li.getTaxableValue() != null ? li.getTaxableValue() : BigDecimal.ZERO)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        // Fall back to invoice-level totalAmount - totalGst when no line items yet
+        if (taxableTotal.compareTo(BigDecimal.ZERO) == 0 && invoice.getTotalAmount() != null) {
+            BigDecimal gst = invoice.getTotalGst() != null ? invoice.getTotalGst() : BigDecimal.ZERO;
+            taxableTotal = invoice.getTotalAmount().subtract(gst);
+        }
+
         return InvoiceResponse.builder()
                 .id(invoice.getId())
                 .vendorName(invoice.getVendorName())
                 .vendorGstin(invoice.getVendorGstin())
                 .invoiceNumber(invoice.getInvoiceNumber())
                 .invoiceDate(invoice.getInvoiceDate())
-
-
+                .taxableValue(taxableTotal)
                 .totalAmount(invoice.getTotalAmount())
                 .totalGst(invoice.getTotalGst())
+                .cgstAmount(cgstTotal)
+                .sgstAmount(sgstTotal)
+                .igstAmount(igstTotal)
                 .parseStatus(invoice.getParseStatus())
                 .confidenceScore(invoice.getConfidenceScore())
                 .createdAt(invoice.getCreatedAt())
+                .lineItems(lineItemResponses)
                 .build();
     }
 
-    public Page<InvoiceResponse> getInvoiceResponses(String email, Pageable pageable) {
-        return getInvoices(email, pageable)
+    public Page<InvoiceResponse> getInvoiceResponses(String email,int month,int year, Pageable pageable) {
+        return getInvoices(email, month, year, pageable)
                 .map(this::toResponse);
     }
 

@@ -9,18 +9,18 @@ const MismatchList = ({ mismatches, onViewDetail }) => {
   const columns = [
     {
       title: 'Status',
-      dataIndex: 'type',
-      key: 'type',
-      render: (type) => (
-        <Tag color={getMismatchTypeColor(type)}>
-          {getMismatchTypeLabel(type)}
+      dataIndex: 'status',
+      key: 'status',
+      render: (status) => (
+        <Tag color={getMismatchTypeColor(status)}>
+          {getMismatchTypeLabel(status)}
         </Tag>
       ),
-      filters: [...new Set(mismatches.map(m => m.type))].map(type => ({
-        text: getMismatchTypeLabel(type),
-        value: type,
+      filters: [...new Set(mismatches.map(m => m.status))].map(s => ({
+        text: getMismatchTypeLabel(s),
+        value: s,
       })),
-      onFilter: (value, record) => record.type === value,
+      onFilter: (value, record) => record.status === value,
     },
     {
       title: 'Invoice #',

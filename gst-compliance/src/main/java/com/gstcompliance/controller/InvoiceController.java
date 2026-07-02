@@ -123,7 +123,7 @@ public class InvoiceController {
             try {
                 PipelineState state = future.get();
                 response.put("status", state.getStatus().name());
-                response.put("completed", true);
+                response.put("completed", state.getStatus() == PipelineState.PipelineStatus.COMPLETED);
                 response.put("allAgentsSuccessful", state.isAllAgentsSuccessful());
                 response.put("errors", state.getErrors());
                 response.put("result", state);
@@ -141,14 +141,19 @@ public class InvoiceController {
 
     @GetMapping
     public ResponseEntity<ApiResponse<Page<InvoiceResponse>>> getInvoices(
+            @RequestParam int month,
+            @RequestParam int year,
             Authentication authentication,
-            Pageable pageable) {
+            Pageable pageable
+    ) {
 
         return ResponseEntity.ok(
                 ApiResponse.success(
                         "Invoices retrieved successfully",
                         invoiceService.getInvoiceResponses(
                                 authentication.getName(),
+                                month,
+                                year,
                                 pageable
                         )
                 )
@@ -167,6 +172,26 @@ public class InvoiceController {
                                 id,
                                 authentication.getName()
                         )
+                )
+        );
+    }
+
+    @PutMapping("/{id}")
+    public ResponseEntity<ApiResponse<InvoiceResponse>> updateInvoice(
+            @PathVariable UUID id,
+            @RequestBody InvoiceResponse updatedInvoiceDto,
+            Authentication authentication) {
+
+        InvoiceResponse response = invoiceService.updateInvoiceAndLineItems(
+                id,
+                updatedInvoiceDto,
+                authentication.getName()
+        );
+
+        return ResponseEntity.ok(
+                ApiResponse.success(
+                        "Invoice updated successfully",
+                        response
                 )
         );
     }

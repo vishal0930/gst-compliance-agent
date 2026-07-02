@@ -13,6 +13,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class ReconcileRequest {
+
     @NotNull
     @Min(1)
     @Max(12)
@@ -23,6 +24,7 @@ public class ReconcileRequest {
     @Max(2030)
     private Integer year;
 
-    @NotNull
-    private String userEmail;  // ✅ Add this field
+    // Not validated — set server-side from Authentication principal.
+    // Never sent by the frontend.
+    private String userEmail;
 }

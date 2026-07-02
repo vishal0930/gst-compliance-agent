@@ -31,5 +31,5 @@ public class VectorStoreConfig {
     }
 
     // Embedding dimension
-    public static final int EMBEDDING_DIMENSION = 1536;
+    public static final int EMBEDDING_DIMENSION = 768;
 }

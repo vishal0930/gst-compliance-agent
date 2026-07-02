@@ -14,6 +14,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -47,12 +48,14 @@ public class PipelineIntegrationTest {
     @Test
     void testFullPipelineExecution() throws Exception {
         // Given
-        String userId = "test@example.com";
+        UUID userId = UUID.randomUUID();
+        String userEmail = "test@example.com";
         String period = "01-2026";
         List<String> fileKeys = List.of("invoice1.pdf", "invoice2.pdf");
+        UUID invoiceId = UUID.randomUUID();
 
         // When
-        CompletableFuture<PipelineState> future = pipelineService.runPipeline(userId, period, fileKeys);
+        CompletableFuture<PipelineState> future = pipelineService.runPipeline(userId, userEmail, period, fileKeys, invoiceId);
         PipelineState state = future.get();
 
         // Then

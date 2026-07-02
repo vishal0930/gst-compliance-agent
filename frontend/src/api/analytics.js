@@ -1,8 +1,14 @@
 import client from './client';
 
-// No specific analytics backend API provided in specification
-// This file serves as a placeholder for future analytics endpoints
+// Analytics is derived from existing backend endpoints:
+// invoices, gstr2b summary, and reconciliation history.
 export const analyticsApi = {
-  // Placeholder for future analytics endpoints
-  // Remove when backend provides actual analytics API
+  getInvoiceSummary: (params = {}) =>
+    client.get('/invoices', { params }),
+
+  getGstr2bSummary: (month, year) =>
+    client.get('/gstr2b/summary', { params: { month, year } }),
+
+  getReconciliationHistory: (params = {}) =>
+    client.get('/reconciliation', { params }),
 };

@@ -1,41 +1,23 @@
 import client from './client';
 
 export const reconciliationApi = {
-  reconcile: async (month, year) => {
-    const response = await client.post('/reconciliation/reconcile', { month, year });
-    return response.data;
-  },
+  reconcile: (month, year) =>
+    client.post('/reconciliation/run', { month, year }),
 
-  getHistory: async (params = {}) => {
-    const queryParams = new URLSearchParams();
-    Object.entries(params).forEach(([key, value]) => {
-      if (value !== undefined && value !== null) {
-        queryParams.append(key, String(value));
-      }
-    });
-    const response = await client.get(`/reconciliation/history?${queryParams.toString()}`);
-    return response.data;
-  },
+  getHistory: (params = {}) =>
+    client.get('/reconciliation', { params }),
 
-  getReconciliation: async (id) => {
-    const response = await client.get(`/reconciliation/${id}`);
-    return response.data;
-  },
+  getReconciliation: (id) =>
+    client.get(`/reconciliation/${id}`),
 
-  getMismatches: async (id) => {
-    const response = await client.get(`/reconciliation/${id}/mismatches`);
-    return response.data;
-  },
+  getMismatches: (id, type) =>
+    client.get(`/reconciliation/${id}/mismatches`, { params: type ? { type } : {} }),
 
-  resolveMismatch: async (id, mismatchId) => {
-    const response = await client.post(`/reconciliation/${id}/resolve/${mismatchId}`);
-    return response.data;
-  },
+  resolveMismatch: (id, mismatchId, note) =>
+    client.post(`/reconciliation/${id}/resolve/${mismatchId}`, note, {
+      headers: { 'Content-Type': 'text/plain' },
+    }),
 
-  exportReconciliation: async (id) => {
-    const response = await client.get(`/reconciliation/${id}/export`, {
-      responseType: 'blob'
-    });
-    return response.data;
-  },
+  exportReconciliation: (id) =>
+    client.get(`/reconciliation/${id}/export`, { responseType: 'blob' }),
 };
